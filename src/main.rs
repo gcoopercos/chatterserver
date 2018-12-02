@@ -1,29 +1,20 @@
 extern crate appnetcore;
 
 use std::collections::HashMap;
-use std::sync::mpsc::{Sender, Receiver, TryRecvError};
+use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc;
 
 use appnetcore::reader::CommCommand;
+use appnetcore::reader::AppCommand;
 use appnetcore::reader::PacketReaderServer;
+use appnetcore::reader::{check_app_commands, check_comm_commands};
 use appnetcore::network::read_packets;
-
 use appnetcore::connstate::SocketReadAddress;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 //const  THRESHOLD: i32 = 10;
 const MS_PER_UPDATE: f64 = 60.0;
-
-//
-// Grabs 1 command off the channel and executes it.
-//
-fn check_comm_commands(rx: &Receiver<Box<CommCommand + Send>>,
-                       client_state: & mut HashMap<String,SocketReadAddress>) -> Result<Box<CommCommand>, TryRecvError> {
-    let received_value = rx.try_recv()?;
-    received_value.execute(client_state);
-    Ok(received_value)
-}
 
 fn get_current_time() -> u64 {
     let start = SystemTime::now();
@@ -37,22 +28,25 @@ fn get_current_time() -> u64 {
 
 fn main() {
     println!("Initialization...");
-    let listen_addresss = SocketReadAddress{
+    let listen_address = SocketReadAddress{
         read_host: String::from("127.0.0.1"),
-        _read_port: 34222
+        _read_port: 10000
     };
 
     // States.
     let mut client_state: HashMap<String,SocketReadAddress> = HashMap::new();
 
-    let (tx,command_rx): (Sender<Box<CommCommand + Send>>, Receiver<Box<CommCommand + Send>>) = mpsc::channel();
-    let pri = PacketReaderServer::with_sender(tx);
+    let (tx,command_rx): (Sender<Box<CommCommand + Send>>,
+                          Receiver<Box<CommCommand + Send>>) = mpsc::channel();
+
+    let (app_tx,app_command_rx): (Sender<Box<AppCommand + Send>>,
+                                  Receiver<Box<AppCommand + Send>>) = mpsc::channel();
+    let pri = PacketReaderServer::with_senders(tx, app_tx);
 
     // Initialize our packet reader
-    let _rthread = read_packets(pri, listen_address);
+    let _rthread = read_packets(pri, &listen_address);
 
     println!("Initialized.");
-
 
     let mut previous = get_current_time();
 
@@ -68,7 +62,7 @@ fn main() {
         while lag >= MS_PER_UPDATE {
             // Process connection commands
             let _ = check_comm_commands(&command_rx, &mut client_state);
-
+            let _ = check_app_commands(&app_command_rx);
             // Process game state
 
             // Crank engine
