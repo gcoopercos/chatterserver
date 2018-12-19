@@ -30,7 +30,8 @@ fn main() {
     println!("Initialization...");
     let listen_address = SocketReadAddress{
         read_host: String::from("127.0.0.1"),
-        _read_port: 10000
+        read_port: 10000,
+        reader_id: String::from("testserver")
     };
 
     // States.
@@ -41,7 +42,10 @@ fn main() {
 
     let (app_tx,app_command_rx): (Sender<Box<AppCommand + Send>>,
                                   Receiver<Box<AppCommand + Send>>) = mpsc::channel();
-    let pri = PacketReaderServer::with_senders(tx, app_tx);
+
+    let (_reader_tx, reader_rx) = mpsc::channel();
+
+    let pri = PacketReaderServer::new(tx, app_tx, reader_rx);
 
     // Initialize our packet reader
     let _rthread = read_packets(pri, &listen_address);
